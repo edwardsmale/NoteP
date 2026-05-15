@@ -233,11 +233,53 @@ void MainFrame::InitUI() {
                 }
             }
 
-            // Save current scroll position
+            // Read new file content
+            std::ifstream file(currentFile.ToStdString(), std::ios::binary | std::ios::ate);
+            if (!file.is_open()) {
+                wxMessageBox(wxT("Could not open file"), wxT("Error"), wxOK | wxICON_ERROR);
+                return;
+            }
+
+            std::streamsize fileSize = file.tellg();
+            file.seekg(0, std::ios::beg);
+            file.rdbuf()->pubsetbuf(nullptr, 256 * 1024);
+
+            std::string newContent(fileSize, '\0');
+            file.read(&newContent[0], fileSize);
+            file.close();
+
+            std::string currentContent = textCtrl->GetValue().ToStdString();
+
+            // Check if content is identical
+            if (newContent == currentContent) {
+                return;  // No changes, do nothing
+            }
+
+            // Check if new content is just the old content with appended text
+            if (newContent.size() > currentContent.size() &&
+                newContent.compare(0, currentContent.size(), currentContent) == 0) {
+                // Just append the new content - optimized for speed
+                const char* appendedPtr = newContent.c_str() + currentContent.size();
+                size_t appendedLen = newContent.size() - currentContent.size();
+
+                // Disable updates during append for speed
+                textCtrl->BeginUndoAction();
+                int insertPos = textCtrl->GetLength();
+                textCtrl->InsertText(insertPos, std::string(appendedPtr, appendedLen));
+                textCtrl->EndUndoAction();
+
+                // Move cursor to end to show new content
+                textCtrl->SetCurrentPos(insertPos + appendedLen);
+                textCtrl->SetAnchor(insertPos + appendedLen);
+
+                isModified = false;
+                return;
+            }
+
+            // Full reload needed - content has changed or was truncated
             int firstVisibleLine = textCtrl->GetFirstVisibleLine();
             int currentPos = textCtrl->GetCurrentPos();
 
-            // Reload the file
             LoadFile(currentFile);
 
             // Restore scroll position and cursor
