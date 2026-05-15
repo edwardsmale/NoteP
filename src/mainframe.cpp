@@ -214,8 +214,44 @@ void MainFrame::InitUI() {
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     textCtrl = new wxStyledTextCtrl(this);
 
-    // Bind F5 key event handler to text control
+    // Bind F2 and F5 key event handlers to text control
     textCtrl->Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& event) {
+        if (event.GetKeyCode() == WXK_F2) {
+            // F2: Reload file from disk
+            if (currentFile.IsEmpty()) {
+                wxMessageBox(wxT("No file is currently open."), wxT("Reload"), wxOK | wxICON_INFORMATION);
+                return;
+            }
+
+            if (isModified) {
+                wxMessageDialog dlg(this,
+                    wxT("The current file has been modified. Reload and discard changes?"),
+                    wxT("Reload File"),
+                    wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+                if (dlg.ShowModal() != wxID_YES) {
+                    return;
+                }
+            }
+
+            // Save current scroll position
+            int firstVisibleLine = textCtrl->GetFirstVisibleLine();
+            int currentPos = textCtrl->GetCurrentPos();
+
+            // Reload the file
+            LoadFile(currentFile);
+
+            // Restore scroll position and cursor
+            if (firstVisibleLine >= 0) {
+                textCtrl->SetFirstVisibleLine(firstVisibleLine);
+            }
+            if (currentPos >= 0 && currentPos <= (int)textCtrl->GetLength()) {
+                textCtrl->SetCurrentPos(currentPos);
+                textCtrl->SetAnchor(currentPos);
+            }
+
+            return;
+        }
+
         if (event.GetKeyCode() == WXK_F5) {
             wxDateTime now = wxDateTime::Now();
 
