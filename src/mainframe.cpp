@@ -128,6 +128,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_STC_MODIFIED(wxID_ANY, MainFrame::OnTextModified)
     EVT_STC_UPDATEUI(wxID_ANY, MainFrame::OnTextUpdateUI)
     EVT_KEY_DOWN(MainFrame::OnFrameKeyDown)
+    EVT_MOVING(MainFrame::OnMoving)
     EVT_CLOSE(MainFrame::OnClose)
 wxEND_EVENT_TABLE()
 
@@ -170,9 +171,10 @@ MainFrame::MainFrame(const wxString& title, const wxString& fileToOpen)
         SetIcon(CreateNotepadIcon());
     }
 
+    // Set window to 800x600 on load
+    SetSize(800, 600);
     int width, height, x, y;
     config->LoadWindowState(width, height, x, y);
-    SetSize(width, height);
     SetPosition(wxPoint(x, y));
 
     wxString fontName;
@@ -645,6 +647,36 @@ void MainFrame::OnTextUpdateUI(wxStyledTextEvent& event) {
 }
 
 void MainFrame::OnFrameKeyDown(wxKeyEvent& event) {
+    event.Skip();
+}
+
+void MainFrame::OnMoving(wxMoveEvent& event) {
+    // If window is maximized and being dragged, restore it
+    if (IsMaximized()) {
+        wxPoint pos = event.GetPosition();
+        wxSize size = GetSize();
+
+        // Check if being dragged from top (title bar area)
+        wxPoint mousePos = wxGetMousePosition();
+        int titleBarHeight = 30; // Approximate title bar height
+
+        // If mouse is near the top and window is being moved, restore and reposition
+        if (mousePos.y < pos.y + titleBarHeight) {
+            // Get stored window size from config or use default
+            int storedWidth = 800, storedHeight = 600;
+            config->LoadWindowState(storedWidth, storedHeight, storedWidth, storedHeight);
+
+            // Restore the window
+            Maximize(false);
+
+            // Position window so cursor stays at same relative position in title bar
+            int newX = mousePos.x - (storedWidth / 2);
+            int newY = mousePos.y - 15; // Approximate title bar center
+
+            SetPosition(wxPoint(newX, newY));
+        }
+    }
+
     event.Skip();
 }
 
