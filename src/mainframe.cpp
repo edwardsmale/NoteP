@@ -296,6 +296,26 @@ void MainFrame::ConfigureTextCtrl() {
     textCtrl->SetTabWidth(4);
     textCtrl->SetUseTabs(false);
 
+    // Performance optimizations for large files
+    textCtrl->SetScrollWidthTracking(false);
+    textCtrl->SetIdleStyling(wxSTC_IDLESTYLING_NONE);
+
+    // Configure visual features
+    textCtrl->SetCaretPeriod(500);  // Enable caret blinking (500ms period)
+    textCtrl->SetCaretWidth(1);     // Thin caret
+    textCtrl->SetMultipleSelection(false);  // Simpler selection handling
+
+    // Optimize scrolling performance
+    textCtrl->SetScrollWidth(1);
+    textCtrl->SetEndAtLastLine(false);
+
+    // Reduce visual updates
+    textCtrl->SetMarginSensitive(0, false);
+    textCtrl->SetMarginSensitive(1, false);
+
+    // Disable drag-to-move while keeping text selection enabled
+    textCtrl->SetDropTarget(nullptr);
+
     textCtrl->SetFocus();
 }
 
@@ -324,16 +344,44 @@ void MainFrame::UpdateTitle() {
 }
 
 void MainFrame::LoadFile(const wxString& filename) {
-    std::ifstream file(filename.ToStdString());
+    std::ifstream file(filename.ToStdString(), std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         wxMessageBox(wxT("Could not open file"), wxT("Error"), wxOK | wxICON_ERROR);
         return;
     }
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    textCtrl->SetText(buffer.str());
+    // Check file size
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    // Disable undo for very large files to save memory
+    bool largeFile = (fileSize > 10 * 1024 * 1024);
+    if (largeFile) {
+        textCtrl->SetUndoCollection(false);
+    }
+
+    // Optimize file reading with larger buffer
+    file.rdbuf()->pubsetbuf(nullptr, 256 * 1024);  // 256KB buffer
+
+    // Fast binary read directly into string
+    std::string buffer(fileSize, '\0');
+    file.read(&buffer[0], fileSize);
     file.close();
+
+    // Show busy cursor and disable updates for large files
+    wxBusyCursor wait;
+    textCtrl->BeginUndoAction();
+    textCtrl->SetText(buffer);
+    textCtrl->EndUndoAction();
+
+    // Re-enable undo after loading
+    if (largeFile) {
+        textCtrl->SetUndoCollection(true);
+    }
+
+    // Move to top and clear any selection
+    textCtrl->SetCurrentPos(0);
+    textCtrl->SetAnchor(0);
 
     currentFile = filename;
     isModified = false;
