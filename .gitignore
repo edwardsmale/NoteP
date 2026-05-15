@@ -1,0 +1,48 @@
+# CMake build directory
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.lib
+*.exe
+*.dll
+*.pdb
+
+# IDE files
+.vs/
+.vscode/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor backups
+*~
+*.swp
+*.swo
+*.swn
+*.bak
+
+# Claude Code
+.claude/
+*.claude
+
+# OS specific
+Thumbs.db
+.directory
+
+# Temporary files
+*.tmp
+*.temp

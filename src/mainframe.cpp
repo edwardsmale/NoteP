@@ -1,0 +1,560 @@
+#include "mainframe.h"
+#include "findreplace.h"
+#include "config.h"
+#include <wx/stc/stc.h>
+#include <wx/print.h>
+#include <wx/printdlg.h>
+#include <wx/fontdlg.h>
+#include <wx/tokenzr.h>
+#include <wx/stdpaths.h>
+#include <fstream>
+#include <sstream>
+
+// Create a simple Notepad-like icon
+wxIcon CreateNotepadIcon() {
+    wxBitmap bitmap(16, 16);
+    wxMemoryDC dc(bitmap);
+
+    // Fill with light gray background
+    dc.SetBrush(wxBrush(*wxWHITE));
+    dc.SetPen(wxPen(*wxBLACK, 1));
+    dc.DrawRectangle(1, 1, 14, 14);
+
+    // Draw lines to represent text (like notepad)
+    dc.SetPen(wxPen(*wxBLACK, 1));
+    dc.DrawLine(3, 4, 13, 4);
+    dc.DrawLine(3, 6, 13, 6);
+    dc.DrawLine(3, 8, 13, 8);
+    dc.DrawLine(3, 10, 10, 10);
+
+    dc.SelectObject(wxNullBitmap);
+
+    wxIcon icon;
+    icon.CopyFromBitmap(bitmap);
+    return icon;
+}
+
+class TextPrintout : public wxPrintout {
+public:
+    TextPrintout(const wxString& title, const wxString& text)
+        : wxPrintout(title), text(text) {
+    }
+
+    bool OnPrintPage(int pageNum) override {
+        wxDC* dc = GetDC();
+        if (!dc) return false;
+
+        int pageWidth, pageHeight;
+        GetPageSizePixels(&pageWidth, &pageHeight);
+
+        // Get printer DPI and scale font accordingly
+        int printerPPI_X, printerPPI_Y;
+        GetPPIPrinter(&printerPPI_X, &printerPPI_Y);
+
+        // Use a large base font size (72pt) and scale by printer DPI
+        // Typical screen is 96 DPI, printer is 300+ DPI
+        int scaledFontSize = 72;
+        wxFont font(scaledFontSize, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL);
+        dc->SetFont(font);
+
+        // Draw the text at the top of the page with margins
+        int margin = 500;
+        int y = margin;
+        dc->DrawText(text, margin, y);
+
+        return true;
+    }
+
+    bool OnBeginDocument(int startPage, int endPage) override {
+        return wxPrintout::OnBeginDocument(startPage, endPage);
+    }
+
+    void GetPageInfo(int* minPage, int* maxPage, int* selPageFrom, int* selPageTo) override {
+        *minPage = 1;
+        *maxPage = 1;
+        *selPageFrom = 1;
+        *selPageTo = 1;
+    }
+
+private:
+    wxString text;
+};
+
+
+enum {
+    ID_NEW = 1,
+    ID_NEWWINDOW,
+    ID_OPEN,
+    ID_SAVE,
+    ID_SAVEAS,
+    ID_PAGESETUP,
+    ID_PRINT,
+    ID_EXIT,
+    ID_UNDO,
+    ID_REDO,
+    ID_CUT,
+    ID_COPY,
+    ID_PASTE,
+    ID_SELECTALL,
+    ID_FIND,
+    ID_REPLACE,
+    ID_FONT,
+    ID_WORDWRAP,
+    ID_LINENUMBERS,
+    ID_ABOUT,
+};
+
+wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
+    EVT_MENU(ID_NEW, MainFrame::OnNew)
+    EVT_MENU(ID_NEWWINDOW, MainFrame::OnNewWindow)
+    EVT_MENU(ID_OPEN, MainFrame::OnOpen)
+    EVT_MENU(ID_SAVE, MainFrame::OnSave)
+    EVT_MENU(ID_SAVEAS, MainFrame::OnSaveAs)
+    EVT_MENU(ID_PAGESETUP, MainFrame::OnPageSetup)
+    EVT_MENU(ID_PRINT, MainFrame::OnPrint)
+    EVT_MENU(ID_EXIT, MainFrame::OnExit)
+    EVT_MENU(ID_UNDO, MainFrame::OnUndo)
+    EVT_MENU(ID_REDO, MainFrame::OnRedo)
+    EVT_MENU(ID_CUT, MainFrame::OnCut)
+    EVT_MENU(ID_COPY, MainFrame::OnCopy)
+    EVT_MENU(ID_PASTE, MainFrame::OnPaste)
+    EVT_MENU(ID_SELECTALL, MainFrame::OnSelectAll)
+    EVT_MENU(ID_FIND, MainFrame::OnFind)
+    EVT_MENU(ID_REPLACE, MainFrame::OnReplace)
+    EVT_MENU(ID_FONT, MainFrame::OnFont)
+    EVT_MENU(ID_WORDWRAP, MainFrame::OnWordWrap)
+    EVT_MENU(ID_LINENUMBERS, MainFrame::OnLineNumbers)
+    EVT_MENU(ID_ABOUT, MainFrame::OnAbout)
+    EVT_STC_MODIFIED(wxID_ANY, MainFrame::OnTextModified)
+    EVT_STC_UPDATEUI(wxID_ANY, MainFrame::OnTextUpdateUI)
+    EVT_CLOSE(MainFrame::OnClose)
+wxEND_EVENT_TABLE()
+
+MainFrame::MainFrame(const wxString& title, const wxString& fileToOpen)
+    : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxSize(800, 600)),
+      isModified(false), findReplaceDialog(NULL), currentFile(wxT("")), wordWrapEnabled(false),
+      lineNumbersEnabled(false) {
+
+    // Initialize with default font
+    currentFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, wxT("Consolas"));
+
+    config = new Config();
+    InitUI();
+    CreateMenuBar();
+    SetupStatusBar();
+    ConfigureTextCtrl();
+
+    // Set the Notepad icon
+    wxIcon icon;
+    wxString exePath = wxStandardPaths::Get().GetExecutablePath();
+    wxString exeDir = exePath.BeforeLast(wxFILE_SEP_PATH);
+
+    // Try multiple locations for the icon
+    wxArrayString iconPaths;
+    iconPaths.Add(exeDir + wxFILE_SEP_PATH + wxT("icon.ico"));  // Same dir as exe
+    iconPaths.Add(exeDir + wxFILE_SEP_PATH + wxT("..") + wxFILE_SEP_PATH + wxT("..") + wxFILE_SEP_PATH + wxT("icon.ico"));  // Project root
+
+    bool iconLoaded = false;
+    for (size_t i = 0; i < iconPaths.GetCount(); i++) {
+        if (wxFileExists(iconPaths[i])) {
+            icon.LoadFile(iconPaths[i], wxBITMAP_TYPE_ICO);
+            SetIcon(icon);
+            iconLoaded = true;
+            break;
+        }
+    }
+
+    if (!iconLoaded) {
+        // Fallback to programmatic icon if file not found
+        SetIcon(CreateNotepadIcon());
+    }
+
+    int width, height, x, y;
+    config->LoadWindowState(width, height, x, y);
+    SetSize(width, height);
+    SetPosition(wxPoint(x, y));
+
+    wxString fontName;
+    int fontSize;
+    config->LoadFont(fontName, fontSize);
+
+    // Ensure we have valid font values
+    if (!fontName.IsEmpty() && fontSize > 0) {
+        currentFont = wxFont(fontSize, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, fontName);
+    }
+
+    textCtrl->StyleSetFont(wxSTC_STYLE_DEFAULT, currentFont);
+
+    // Open file if provided as argument
+    if (!fileToOpen.IsEmpty() && wxFileExists(fileToOpen)) {
+        LoadFile(fileToOpen);
+    }
+}
+
+MainFrame::~MainFrame() {
+    if (config) {
+        int width, height, x, y;
+        GetSize(&width, &height);
+        GetPosition(&x, &y);
+        config->SaveWindowState(width, height, x, y);
+
+        config->SaveFont(currentFont.GetFaceName(), currentFont.GetPointSize());
+
+        delete config;
+    }
+    if (findReplaceDialog) {
+        findReplaceDialog->Destroy();
+    }
+}
+
+void MainFrame::InitUI() {
+    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+    textCtrl = new wxStyledTextCtrl(this);
+    sizer->Add(textCtrl, 1, wxEXPAND);
+    SetSizer(sizer);
+}
+
+void MainFrame::CreateMenuBar() {
+    wxMenuBar* menuBar = new wxMenuBar();
+
+    // File menu
+    wxMenu* fileMenu = new wxMenu();
+    fileMenu->Append(ID_NEW, wxT("&New\tCtrl+N"), wxT("Create a new file"));
+    fileMenu->Append(ID_NEWWINDOW, wxT("New &Window\tCtrl+Shift+N"), wxT("Create a new window"));
+    fileMenu->Append(ID_OPEN, wxT("&Open...\tCtrl+O"), wxT("Open a file"));
+    fileMenu->Append(ID_SAVE, wxT("&Save\tCtrl+S"), wxT("Save the current file"));
+    fileMenu->Append(ID_SAVEAS, wxT("Save &As...\tCtrl+Shift+S"), wxT("Save file with a new name"));
+    fileMenu->AppendSeparator();
+    fileMenu->Append(ID_PAGESETUP, wxT("Page Set&up..."), wxT("Setup page printing options"));
+    fileMenu->Append(ID_PRINT, wxT("&Print...\tCtrl+P"), wxT("Print the document"));
+    fileMenu->AppendSeparator();
+    fileMenu->Append(ID_EXIT, wxT("E&xit"), wxT("Exit the application"));
+    menuBar->Append(fileMenu, wxT("&File"));
+
+    // Edit menu
+    wxMenu* editMenu = new wxMenu();
+    editMenu->Append(ID_UNDO, wxT("&Undo\tCtrl+Z"), wxT("Undo the last action"));
+    editMenu->Append(ID_REDO, wxT("&Redo\tCtrl+Y"), wxT("Redo the last undone action"));
+    editMenu->AppendSeparator();
+    editMenu->Append(ID_CUT, wxT("Cu&t\tCtrl+X"), wxT("Cut selected text"));
+    editMenu->Append(ID_COPY, wxT("&Copy\tCtrl+C"), wxT("Copy selected text"));
+    editMenu->Append(ID_PASTE, wxT("&Paste\tCtrl+V"), wxT("Paste text from clipboard"));
+    editMenu->AppendSeparator();
+    editMenu->Append(ID_SELECTALL, wxT("Select &All\tCtrl+A"), wxT("Select all text"));
+    editMenu->AppendSeparator();
+    editMenu->Append(ID_FIND, wxT("&Find\tCtrl+F"), wxT("Find text"));
+    editMenu->Append(ID_REPLACE, wxT("&Replace\tCtrl+H"), wxT("Find and replace text"));
+    menuBar->Append(editMenu, wxT("&Edit"));
+
+    // Format menu
+    wxMenu* formatMenu = new wxMenu();
+    formatMenu->Append(ID_FONT, wxT("&Font..."), wxT("Change font"));
+    formatMenu->AppendCheckItem(ID_WORDWRAP, wxT("&Word Wrap"), wxT("Toggle word wrap"));
+    menuBar->Append(formatMenu, wxT("F&ormat"));
+
+    // View menu
+    wxMenu* viewMenu = new wxMenu();
+    viewMenu->AppendCheckItem(ID_LINENUMBERS, wxT("&Line Numbers"), wxT("Toggle line numbers"));
+    menuBar->Append(viewMenu, wxT("&View"));
+
+    // Help menu
+    wxMenu* helpMenu = new wxMenu();
+    helpMenu->Append(ID_ABOUT, wxT("&About"), wxT("About NoteP"));
+    menuBar->Append(helpMenu, wxT("&Help"));
+
+    SetMenuBar(menuBar);
+}
+
+void MainFrame::SetupStatusBar() {
+    statusBar = CreateStatusBar(2);
+    SetStatusText(wxT("Ready"), 0);
+    SetStatusText(wxT("Line: 1  Column: 1"), 1);
+}
+
+void MainFrame::ConfigureTextCtrl() {
+    textCtrl->SetLexer(wxSTC_LEX_NULL);
+
+    // Setup line numbers (hidden by default)
+    textCtrl->SetMarginType(0, wxSTC_MARGIN_NUMBER);
+    textCtrl->SetMarginWidth(0, 0);
+    textCtrl->StyleSetForeground(wxSTC_STYLE_LINENUMBER, *wxBLACK);
+    textCtrl->StyleSetBackground(wxSTC_STYLE_LINENUMBER, wxColour(200, 200, 200));
+
+    // Enable folding margin
+    textCtrl->SetMarginType(1, wxSTC_MARGIN_SYMBOL);
+    textCtrl->SetMarginMask(1, wxSTC_MASK_FOLDERS);
+    textCtrl->SetMarginWidth(1, 0);
+
+    // Set font
+    wxFont font(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, wxT("Consolas"));
+    textCtrl->StyleSetFont(wxSTC_STYLE_DEFAULT, font);
+    textCtrl->StyleSetForeground(wxSTC_STYLE_DEFAULT, *wxBLACK);
+    textCtrl->StyleSetBackground(wxSTC_STYLE_DEFAULT, *wxWHITE);
+    textCtrl->SetCaretForeground(*wxBLACK);
+
+    // Set tab width
+    textCtrl->SetTabWidth(4);
+    textCtrl->SetUseTabs(false);
+
+    textCtrl->SetFocus();
+}
+
+void MainFrame::UpdateStatusBar() {
+    long line = textCtrl->GetCurrentLine() + 1;
+    long col = textCtrl->GetColumn(textCtrl->GetCurrentPos()) + 1;
+    wxString status;
+    status.Printf(wxT("Line: %ld  Column: %ld"), line, col);
+    SetStatusText(status, 1);
+}
+
+void MainFrame::UpdateTitle() {
+    wxString title;
+
+    if (!currentFile.IsEmpty()) {
+        wxFileName fn(currentFile);
+        title = fn.GetFullName() + wxT(" - NoteP");
+    } else {
+        title = wxT("NoteP");
+    }
+
+    if (isModified) {
+        title = wxT("*") + title;
+    }
+    SetTitle(title);
+}
+
+void MainFrame::LoadFile(const wxString& filename) {
+    std::ifstream file(filename.ToStdString());
+    if (!file.is_open()) {
+        wxMessageBox(wxT("Could not open file"), wxT("Error"), wxOK | wxICON_ERROR);
+        return;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    textCtrl->SetText(buffer.str());
+    file.close();
+
+    currentFile = filename;
+    isModified = false;
+    UpdateTitle();
+    UpdateStatusBar();
+}
+
+void MainFrame::SaveFile(const wxString& filename) {
+    std::ofstream file(filename.ToStdString());
+    if (!file.is_open()) {
+        wxMessageBox(wxT("Could not save file"), wxT("Error"), wxOK | wxICON_ERROR);
+        return;
+    }
+
+    file << textCtrl->GetValue().ToStdString();
+    file.close();
+
+    currentFile = filename;
+    isModified = false;
+    UpdateTitle();
+}
+
+bool MainFrame::PromptSaveIfModified() {
+    if (!isModified) {
+        return true;
+    }
+
+    wxString message = wxT("Do you want to save changes to ");
+    if (currentFile.IsEmpty()) {
+        message += wxT("Untitled");
+    } else {
+        wxFileName fn(currentFile);
+        message += fn.GetFullName();
+    }
+    message += wxT("?");
+
+    int result = wxMessageBox(message, wxT("Save changes?"), wxYES_NO | wxCANCEL | wxICON_QUESTION);
+    if (result == wxYES) {
+        if (currentFile.IsEmpty()) {
+            wxFileDialog dialog(this, wxT("Save File"), wxT(""), wxT(""),
+                              wxT("Text files (*.txt)|*.txt|All files (*.*)|*.*"),
+                              wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+            if (dialog.ShowModal() != wxID_CANCEL) {
+                SaveFile(dialog.GetPath());
+                return true;
+            }
+            return false;
+        } else {
+            SaveFile(currentFile);
+            return true;
+        }
+    }
+    return result != wxCANCEL;
+}
+
+void MainFrame::OnNew(wxCommandEvent& event) {
+    if (!PromptSaveIfModified()) {
+        return;
+    }
+
+    textCtrl->ClearAll();
+    currentFile = wxT("");
+    isModified = false;
+    UpdateTitle();
+    UpdateStatusBar();
+}
+
+void MainFrame::OnNewWindow(wxCommandEvent& event) {
+    MainFrame* frame = new MainFrame(wxT("NoteP - Text Editor"));
+    frame->Show();
+}
+
+void MainFrame::OnOpen(wxCommandEvent& event) {
+    if (!PromptSaveIfModified()) {
+        return;
+    }
+
+    wxFileDialog dialog(this, wxT("Open File"), wxT(""), wxT(""),
+                       wxT("Text files (*.txt)|*.txt|All files (*.*)|*.*"),
+                       wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+
+    if (dialog.ShowModal() != wxID_CANCEL) {
+        LoadFile(dialog.GetPath());
+    }
+}
+
+void MainFrame::OnSave(wxCommandEvent& event) {
+    if (currentFile.IsEmpty()) {
+        wxFileDialog dialog(this, wxT("Save File"), wxT(""), wxT(""),
+                          wxT("Text files (*.txt)|*.txt|All files (*.*)|*.*"),
+                          wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+        if (dialog.ShowModal() != wxID_CANCEL) {
+            SaveFile(dialog.GetPath());
+        }
+    } else {
+        SaveFile(currentFile);
+    }
+}
+
+void MainFrame::OnSaveAs(wxCommandEvent& event) {
+    wxFileDialog dialog(this, wxT("Save File As"), wxT(""), wxT(""),
+                       wxT("Text files (*.txt)|*.txt|All files (*.*)|*.*"),
+                       wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+
+    if (dialog.ShowModal() != wxID_CANCEL) {
+        SaveFile(dialog.GetPath());
+    }
+}
+
+void MainFrame::OnPageSetup(wxCommandEvent& event) {
+    pageSetupData.SetPrintData(printData);
+    wxPageSetupDialog pageSetupDialog(this, &pageSetupData);
+
+    if (pageSetupDialog.ShowModal() == wxID_OK) {
+        pageSetupData = pageSetupDialog.GetPageSetupData();
+        printData = pageSetupData.GetPrintData();
+    }
+}
+
+void MainFrame::OnPrint(wxCommandEvent& event) {
+    wxPrintDialogData printDialogData(printData);
+    wxPrinter printer(&printDialogData);
+    TextPrintout printout(wxT("NoteP Document"), textCtrl->GetValue());
+
+    if (!printer.Print(this, &printout, true)) {
+        if (printer.GetLastError() == wxPRINTER_ERROR) {
+            wxMessageBox(wxT("There was a problem printing.\nPerhaps your current printer is not set correctly?"),
+                        wxT("Printing"), wxOK | wxICON_ERROR);
+        }
+    } else {
+        printData = printer.GetPrintDialogData().GetPrintData();
+    }
+}
+
+void MainFrame::OnExit(wxCommandEvent& event) {
+    Close();
+}
+
+void MainFrame::OnUndo(wxCommandEvent& event) {
+    if (textCtrl->CanUndo()) {
+        textCtrl->Undo();
+    }
+}
+
+void MainFrame::OnRedo(wxCommandEvent& event) {
+    if (textCtrl->CanRedo()) {
+        textCtrl->Redo();
+    }
+}
+
+void MainFrame::OnCut(wxCommandEvent& event) {
+    textCtrl->Cut();
+}
+
+void MainFrame::OnCopy(wxCommandEvent& event) {
+    textCtrl->Copy();
+}
+
+void MainFrame::OnPaste(wxCommandEvent& event) {
+    textCtrl->Paste();
+}
+
+void MainFrame::OnSelectAll(wxCommandEvent& event) {
+    textCtrl->SelectAll();
+}
+
+void MainFrame::OnFind(wxCommandEvent& event) {
+    if (!findReplaceDialog) {
+        findReplaceDialog = new FindReplaceDialog(this, textCtrl);
+    }
+    findReplaceDialog->ShowModal();
+}
+
+void MainFrame::OnReplace(wxCommandEvent& event) {
+    if (!findReplaceDialog) {
+        findReplaceDialog = new FindReplaceDialog(this, textCtrl);
+    }
+    findReplaceDialog->ShowModal();
+}
+
+void MainFrame::OnFont(wxCommandEvent& event) {
+    wxFontData fontData;
+    fontData.SetInitialFont(currentFont);
+
+    wxFontDialog fontDialog(this, fontData);
+    if (fontDialog.ShowModal() == wxID_OK) {
+        currentFont = fontDialog.GetFontData().GetChosenFont();
+        textCtrl->StyleSetFont(wxSTC_STYLE_DEFAULT, currentFont);
+        config->SaveFont(currentFont.GetFaceName(), currentFont.GetPointSize());
+    }
+}
+
+void MainFrame::OnWordWrap(wxCommandEvent& event) {
+    wordWrapEnabled = !wordWrapEnabled;
+    textCtrl->SetWrapMode(wordWrapEnabled ? wxSTC_WRAP_WORD : wxSTC_WRAP_NONE);
+}
+
+void MainFrame::OnLineNumbers(wxCommandEvent& event) {
+    lineNumbersEnabled = !lineNumbersEnabled;
+    textCtrl->SetMarginWidth(0, lineNumbersEnabled ? 40 : 0);
+}
+
+void MainFrame::OnAbout(wxCommandEvent& event) {
+    wxMessageBox(wxT("NoteP - A Simple Text Editor\nVersion 1.0"),
+                wxT("About NoteP"),
+                wxOK | wxICON_INFORMATION);
+}
+
+void MainFrame::OnTextModified(wxStyledTextEvent& event) {
+    isModified = true;
+    UpdateTitle();
+}
+
+void MainFrame::OnTextUpdateUI(wxStyledTextEvent& event) {
+    UpdateStatusBar();
+}
+
+void MainFrame::OnClose(wxCloseEvent& event) {
+    if (!PromptSaveIfModified()) {
+        event.Veto();
+        return;
+    }
+    event.Skip();
+}
