@@ -60,6 +60,7 @@ private:
 
     void OnTextModified(wxStyledTextEvent& event);
     void OnTextUpdateUI(wxStyledTextEvent& event);
+    void OnFrameKeyDown(wxKeyEvent& event);
     void OnClose(wxCloseEvent& event);
 
     bool PromptSaveIfModified();

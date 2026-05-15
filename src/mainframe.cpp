@@ -127,6 +127,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_ABOUT, MainFrame::OnAbout)
     EVT_STC_MODIFIED(wxID_ANY, MainFrame::OnTextModified)
     EVT_STC_UPDATEUI(wxID_ANY, MainFrame::OnTextUpdateUI)
+    EVT_KEY_DOWN(MainFrame::OnFrameKeyDown)
     EVT_CLOSE(MainFrame::OnClose)
 wxEND_EVENT_TABLE()
 
@@ -210,6 +211,50 @@ MainFrame::~MainFrame() {
 void MainFrame::InitUI() {
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     textCtrl = new wxStyledTextCtrl(this);
+
+    // Bind F5 key event handler to text control
+    textCtrl->Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& event) {
+        if (event.GetKeyCode() == WXK_F5) {
+            wxDateTime now = wxDateTime::Now();
+
+            // Get Windows locale to determine date/time format
+            wxLocale locale(wxLANGUAGE_DEFAULT);
+            int lang = locale.GetLanguage();
+
+            // Determine format based on locale
+            wxString dateStr, timeStr;
+
+            // Use 24-hour or 12-hour time based on locale
+            bool use12Hour = (lang == wxLANGUAGE_ENGLISH_US);
+
+            if (use12Hour) {
+                timeStr = now.Format(wxT("%I:%M %p"));
+            } else {
+                timeStr = now.Format(wxT("%H:%M"));
+            }
+
+            // Use MM/DD/YYYY for US, DD/MM/YYYY for others
+            if (lang == wxLANGUAGE_ENGLISH_US) {
+                dateStr = now.Format(wxT("%m/%d/%Y"));
+            } else {
+                dateStr = now.Format(wxT("%d/%m/%Y"));
+            }
+
+            wxString dateTime = timeStr + wxT(" ") + dateStr;
+
+            int currentPos = textCtrl->GetCurrentPos();
+            textCtrl->InsertText(currentPos, dateTime);
+            // Clear selection and position cursor after inserted text
+            textCtrl->SetSelection(currentPos + dateTime.Length(), currentPos + dateTime.Length());
+            textCtrl->SetCurrentPos(currentPos + dateTime.Length());
+
+            isModified = true;
+            UpdateTitle();
+            return;
+        }
+        event.Skip();
+    });
+
     sizer->Add(textCtrl, 1, wxEXPAND);
     SetSizer(sizer);
 }
@@ -597,6 +642,10 @@ void MainFrame::OnTextModified(wxStyledTextEvent& event) {
 
 void MainFrame::OnTextUpdateUI(wxStyledTextEvent& event) {
     UpdateStatusBar();
+}
+
+void MainFrame::OnFrameKeyDown(wxKeyEvent& event) {
+    event.Skip();
 }
 
 void MainFrame::OnClose(wxCloseEvent& event) {
