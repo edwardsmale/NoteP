@@ -382,6 +382,11 @@ void MainFrame::ConfigureTextCtrl() {
     // Performance optimizations for large files
     textCtrl->SetScrollWidthTracking(false);
     textCtrl->SetIdleStyling(wxSTC_IDLESTYLING_NONE);
+    textCtrl->SetLayoutCache(wxSTC_CACHE_PAGE);
+
+    // Disable expensive visual features
+    textCtrl->SetViewWhiteSpace(wxSTC_WS_INVISIBLE);
+    textCtrl->SetEdgeMode(wxSTC_EDGE_NONE);
 
     // Configure visual features
     textCtrl->SetCaretPeriod(500);  // Enable caret blinking (500ms period)
@@ -392,9 +397,10 @@ void MainFrame::ConfigureTextCtrl() {
     textCtrl->SetScrollWidth(1);
     textCtrl->SetEndAtLastLine(false);
 
-    // Reduce visual updates
+    // Reduce visual updates and rendering
     textCtrl->SetMarginSensitive(0, false);
     textCtrl->SetMarginSensitive(1, false);
+    textCtrl->SetMouseDownCaptures(false);
 
     // Disable drag-to-move while keeping text selection enabled
     textCtrl->SetDropTarget(nullptr);
