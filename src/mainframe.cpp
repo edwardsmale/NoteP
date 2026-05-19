@@ -442,10 +442,6 @@ void MainFrame::ConfigureTextCtrl() {
     // Reduce visual updates and rendering
     textCtrl->SetMarginSensitive(0, false);
     textCtrl->SetMarginSensitive(1, false);
-    textCtrl->SetMouseDownCaptures(false);
-
-    // Disable drag-to-move while keeping text selection enabled
-    textCtrl->SetDropTarget(nullptr);
 
     textCtrl->SetFocus();
 }
