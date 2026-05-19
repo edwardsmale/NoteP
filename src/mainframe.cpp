@@ -40,7 +40,7 @@ public:
         : wxPrintout(title), text(text) {
     }
 
-    bool OnPrintPage(int pageNum) override {
+    bool OnPrintPage(int) override {
         wxDC* dc = GetDC();
         if (!dc) return false;
 
@@ -568,7 +568,7 @@ bool MainFrame::PromptSaveIfModified() {
     return result != wxCANCEL;
 }
 
-void MainFrame::OnNew(wxCommandEvent& event) {
+void MainFrame::OnNew(wxCommandEvent&) {
     if (!PromptSaveIfModified()) {
         return;
     }
@@ -580,12 +580,12 @@ void MainFrame::OnNew(wxCommandEvent& event) {
     UpdateStatusBar();
 }
 
-void MainFrame::OnNewWindow(wxCommandEvent& event) {
+void MainFrame::OnNewWindow(wxCommandEvent&) {
     MainFrame* frame = new MainFrame(wxT("NoteP - Text Editor"));
     frame->Show();
 }
 
-void MainFrame::OnOpen(wxCommandEvent& event) {
+void MainFrame::OnOpen(wxCommandEvent&) {
     if (!PromptSaveIfModified()) {
         return;
     }
@@ -599,7 +599,7 @@ void MainFrame::OnOpen(wxCommandEvent& event) {
     }
 }
 
-void MainFrame::OnSave(wxCommandEvent& event) {
+void MainFrame::OnSave(wxCommandEvent&) {
     if (currentFile.IsEmpty()) {
         wxFileDialog dialog(this, wxT("Save File"), wxT(""), wxT(""),
                           wxT("Text files (*.txt)|*.txt|All files (*.*)|*.*"),
@@ -612,7 +612,7 @@ void MainFrame::OnSave(wxCommandEvent& event) {
     }
 }
 
-void MainFrame::OnSaveAs(wxCommandEvent& event) {
+void MainFrame::OnSaveAs(wxCommandEvent&) {
     wxFileDialog dialog(this, wxT("Save File As"), wxT(""), wxT(""),
                        wxT("Text files (*.txt)|*.txt|All files (*.*)|*.*"),
                        wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
@@ -622,7 +622,7 @@ void MainFrame::OnSaveAs(wxCommandEvent& event) {
     }
 }
 
-void MainFrame::OnPageSetup(wxCommandEvent& event) {
+void MainFrame::OnPageSetup(wxCommandEvent&) {
     pageSetupData.SetPrintData(printData);
     wxPageSetupDialog pageSetupDialog(this, &pageSetupData);
 
@@ -632,7 +632,7 @@ void MainFrame::OnPageSetup(wxCommandEvent& event) {
     }
 }
 
-void MainFrame::OnPrint(wxCommandEvent& event) {
+void MainFrame::OnPrint(wxCommandEvent&) {
     wxPrintDialogData printDialogData(printData);
     wxPrinter printer(&printDialogData);
     TextPrintout printout(wxT("NoteP Document"), textCtrl->GetValue());
@@ -647,53 +647,53 @@ void MainFrame::OnPrint(wxCommandEvent& event) {
     }
 }
 
-void MainFrame::OnExit(wxCommandEvent& event) {
+void MainFrame::OnExit(wxCommandEvent&) {
     Close();
 }
 
-void MainFrame::OnUndo(wxCommandEvent& event) {
+void MainFrame::OnUndo(wxCommandEvent&) {
     if (textCtrl->CanUndo()) {
         textCtrl->Undo();
     }
 }
 
-void MainFrame::OnRedo(wxCommandEvent& event) {
+void MainFrame::OnRedo(wxCommandEvent&) {
     if (textCtrl->CanRedo()) {
         textCtrl->Redo();
     }
 }
 
-void MainFrame::OnCut(wxCommandEvent& event) {
+void MainFrame::OnCut(wxCommandEvent&) {
     textCtrl->Cut();
 }
 
-void MainFrame::OnCopy(wxCommandEvent& event) {
+void MainFrame::OnCopy(wxCommandEvent&) {
     textCtrl->Copy();
 }
 
-void MainFrame::OnPaste(wxCommandEvent& event) {
+void MainFrame::OnPaste(wxCommandEvent&) {
     textCtrl->Paste();
 }
 
-void MainFrame::OnSelectAll(wxCommandEvent& event) {
+void MainFrame::OnSelectAll(wxCommandEvent&) {
     textCtrl->SelectAll();
 }
 
-void MainFrame::OnFind(wxCommandEvent& event) {
+void MainFrame::OnFind(wxCommandEvent&) {
     if (!findReplaceDialog) {
         findReplaceDialog = new FindReplaceDialog(this, textCtrl);
     }
     findReplaceDialog->ShowModal();
 }
 
-void MainFrame::OnReplace(wxCommandEvent& event) {
+void MainFrame::OnReplace(wxCommandEvent&) {
     if (!findReplaceDialog) {
         findReplaceDialog = new FindReplaceDialog(this, textCtrl);
     }
     findReplaceDialog->ShowModal();
 }
 
-void MainFrame::OnFont(wxCommandEvent& event) {
+void MainFrame::OnFont(wxCommandEvent&) {
     wxFontData fontData;
     fontData.SetInitialFont(currentFont);
 
@@ -705,28 +705,28 @@ void MainFrame::OnFont(wxCommandEvent& event) {
     }
 }
 
-void MainFrame::OnWordWrap(wxCommandEvent& event) {
+void MainFrame::OnWordWrap(wxCommandEvent&) {
     wordWrapEnabled = !wordWrapEnabled;
     textCtrl->SetWrapMode(wordWrapEnabled ? wxSTC_WRAP_WORD : wxSTC_WRAP_NONE);
 }
 
-void MainFrame::OnLineNumbers(wxCommandEvent& event) {
+void MainFrame::OnLineNumbers(wxCommandEvent&) {
     lineNumbersEnabled = !lineNumbersEnabled;
     textCtrl->SetMarginWidth(0, lineNumbersEnabled ? 40 : 0);
 }
 
-void MainFrame::OnAbout(wxCommandEvent& event) {
+void MainFrame::OnAbout(wxCommandEvent&) {
     wxMessageBox(wxT("NoteP - A Simple Text Editor\nVersion 1.0"),
                 wxT("About NoteP"),
                 wxOK | wxICON_INFORMATION);
 }
 
-void MainFrame::OnTextModified(wxStyledTextEvent& event) {
+void MainFrame::OnTextModified(wxStyledTextEvent&) {
     isModified = true;
     UpdateTitle();
 }
 
-void MainFrame::OnTextUpdateUI(wxStyledTextEvent& event) {
+void MainFrame::OnTextUpdateUI(wxStyledTextEvent&) {
     UpdateStatusBar();
 }
 
