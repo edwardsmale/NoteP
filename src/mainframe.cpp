@@ -9,6 +9,11 @@
 #include <wx/stdpaths.h>
 #include <fstream>
 #include <sstream>
+#ifdef __WXMSW__
+#include <windows.h>
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
+#endif
 
 // Create a simple Notepad-like icon
 wxIcon CreateNotepadIcon() {
@@ -192,6 +197,25 @@ MainFrame::MainFrame(const wxString& title, const wxString& fileToOpen)
     if (!fileToOpen.IsEmpty() && wxFileExists(fileToOpen)) {
         LoadFile(fileToOpen);
     }
+
+#ifdef __WXMSW__
+    // Disable rounded corners on Windows 11
+    HWND hwnd = (HWND)GetHandle();
+    if (hwnd) {
+        enum DWMWINDOWATTRIBUTE {
+            DWMWA_WINDOW_CORNER_PREFERENCE = 33
+        };
+        enum DWM_WINDOW_CORNER_PREFERENCE {
+            DWMWCP_DEFAULT = 0,
+            DWMWCP_DONOTROUND = 1,
+            DWMWCP_ROUND = 2,
+            DWMWCP_ROUNDSMALL = 3
+        };
+
+        DWM_WINDOW_CORNER_PREFERENCE cornerPreference = DWMWCP_DONOTROUND;
+        DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPreference, sizeof(cornerPreference));
+    }
+#endif
 }
 
 MainFrame::~MainFrame() {
