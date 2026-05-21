@@ -106,6 +106,8 @@ enum {
     ID_FONT,
     ID_WORDWRAP,
     ID_LINENUMBERS,
+    ID_CLEARALL,
+    ID_COPYALL,
     ID_ABOUT,
 };
 
@@ -129,6 +131,8 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_FONT, MainFrame::OnFont)
     EVT_MENU(ID_WORDWRAP, MainFrame::OnWordWrap)
     EVT_MENU(ID_LINENUMBERS, MainFrame::OnLineNumbers)
+    EVT_MENU(ID_CLEARALL, MainFrame::OnClearAll)
+    EVT_MENU(ID_COPYALL, MainFrame::OnCopyAll)
     EVT_MENU(ID_ABOUT, MainFrame::OnAbout)
     EVT_STC_MODIFIED(wxID_ANY, MainFrame::OnTextModified)
     EVT_STC_UPDATEUI(wxID_ANY, MainFrame::OnTextUpdateUI)
@@ -237,6 +241,20 @@ MainFrame::~MainFrame() {
 void MainFrame::InitUI() {
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     textCtrl = new wxStyledTextCtrl(this);
+
+    // Bind right-click context menu
+    textCtrl->Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent&) {
+        wxMenu contextMenu;
+        contextMenu.Append(ID_CUT, wxT("Cu&t\tCtrl+X"));
+        contextMenu.Append(ID_COPY, wxT("&Copy\tCtrl+C"));
+        contextMenu.Append(ID_PASTE, wxT("&Paste\tCtrl+V"));
+        contextMenu.AppendSeparator();
+        contextMenu.Append(ID_SELECTALL, wxT("Select &All\tCtrl+A"));
+        contextMenu.AppendSeparator();
+        contextMenu.Append(ID_CLEARALL, wxT("C&lear all"));
+        contextMenu.Append(ID_COPYALL, wxT("C&opy all"));
+        PopupMenu(&contextMenu);
+    });
 
     // Bind F2 and F5 key event handlers to text control
     textCtrl->Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& event) {
@@ -733,6 +751,18 @@ void MainFrame::OnWordWrap(wxCommandEvent&) {
 void MainFrame::OnLineNumbers(wxCommandEvent&) {
     lineNumbersEnabled = !lineNumbersEnabled;
     textCtrl->SetMarginWidth(0, lineNumbersEnabled ? 40 : 0);
+}
+
+void MainFrame::OnClearAll(wxCommandEvent&) {
+    textCtrl->ClearAll();
+    isModified = true;
+    UpdateTitle();
+    UpdateStatusBar();
+}
+
+void MainFrame::OnCopyAll(wxCommandEvent&) {
+    textCtrl->SelectAll();
+    textCtrl->Copy();
 }
 
 void MainFrame::OnAbout(wxCommandEvent&) {

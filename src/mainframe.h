@@ -55,6 +55,8 @@ private:
     void OnFont(wxCommandEvent& event);
     void OnWordWrap(wxCommandEvent& event);
     void OnLineNumbers(wxCommandEvent& event);
+    void OnClearAll(wxCommandEvent& event);
+    void OnCopyAll(wxCommandEvent& event);
 
     void OnAbout(wxCommandEvent& event);
 
