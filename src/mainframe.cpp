@@ -144,7 +144,7 @@ wxEND_EVENT_TABLE()
 MainFrame::MainFrame(const wxString& title, const wxString& fileToOpen)
     : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxSize(800, 600)),
       isModified(false), findReplaceDialog(NULL), currentFile(wxT("")), wordWrapEnabled(false),
-      lineNumbersEnabled(false) {
+      lineNumbersEnabled(false), fileEncoding(NULL), fileBOM(false), fileEncodingOwned(false), fileEncodingType(wxFONTENCODING_UTF8) {
 
     // Initialize with default font
     currentFont = wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, wxT("Consolas"));
@@ -223,6 +223,9 @@ MainFrame::MainFrame(const wxString& title, const wxString& fileToOpen)
 }
 
 MainFrame::~MainFrame() {
+    if (fileEncoding && fileEncodingOwned) {
+        delete fileEncoding;
+    }
     if (config) {
         int width, height, x, y;
         GetSize(&width, &height);
@@ -275,7 +278,7 @@ void MainFrame::InitUI() {
                 }
             }
 
-            // Read new file content
+            // Read new file content and detect encoding
             std::ifstream file(currentFile.ToStdString(), std::ios::binary | std::ios::ate);
             if (!file.is_open()) {
                 wxMessageBox(wxT("Could not open file"), wxT("Error"), wxOK | wxICON_ERROR);
@@ -286,33 +289,49 @@ void MainFrame::InitUI() {
             file.seekg(0, std::ios::beg);
             file.rdbuf()->pubsetbuf(nullptr, 256 * 1024);
 
-            std::string newContent(fileSize, '\0');
-            file.read(&newContent[0], fileSize);
+            std::string newContentBuffer(fileSize, '\0');
+            file.read(&newContentBuffer[0], fileSize);
             file.close();
 
-            std::string currentContent = textCtrl->GetValue().ToStdString();
+            // Detect encoding for comparison
+            int newBomSize = 0;
+            bool newHasBOM = false;
+            wxFontEncoding newEncodingType;
+            wxMBConv* newEncoding = DetectFileEncoding(currentFile, newHasBOM, newBomSize, newEncodingType);
+
+            // Convert new content to wxString for comparison
+            wxString newContent;
+            if (newBomSize > 0 && fileSize > static_cast<std::streamsize>(newBomSize)) {
+                const char* contentStart = newContentBuffer.c_str() + newBomSize;
+                size_t contentSize = fileSize - newBomSize;
+                newContent = wxString(contentStart, *newEncoding, contentSize);
+            } else {
+                newContent = wxString(newContentBuffer.c_str(), *newEncoding, fileSize);
+            }
+            delete newEncoding;
+
+            wxString currentContent = textCtrl->GetValue();
 
             // Check if content is identical
             if (newContent == currentContent) {
                 return;  // No changes, do nothing
             }
 
-            // Check if new content is just the old content with appended text
+            // For large file append optimization, compare prefixes of current content
             if (newContent.size() > currentContent.size() &&
-                newContent.compare(0, currentContent.size(), currentContent) == 0) {
+                newContent.substr(0, currentContent.size()) == currentContent) {
                 // Just append the new content - optimized for speed
-                const char* appendedPtr = newContent.c_str() + currentContent.size();
-                size_t appendedLen = newContent.size() - currentContent.size();
+                wxString appendedText = newContent.substr(currentContent.size());
 
                 // Disable updates during append for speed
                 textCtrl->BeginUndoAction();
                 int insertPos = textCtrl->GetLength();
-                textCtrl->InsertText(insertPos, std::string(appendedPtr, appendedLen));
+                textCtrl->InsertText(insertPos, appendedText);
                 textCtrl->EndUndoAction();
 
                 // Move cursor to end to show new content
-                textCtrl->SetCurrentPos(insertPos + appendedLen);
-                textCtrl->SetAnchor(insertPos + appendedLen);
+                textCtrl->SetCurrentPos(insertPos + appendedText.size());
+                textCtrl->SetAnchor(insertPos + appendedText.size());
 
                 isModified = false;
                 return;
@@ -491,8 +510,9 @@ void MainFrame::ConfigureTextCtrl() {
 void MainFrame::UpdateStatusBar() {
     long line = textCtrl->GetCurrentLine() + 1;
     long col = textCtrl->GetColumn(textCtrl->GetCurrentPos()) + 1;
+    wxString encoding = GetEncodingName(fileEncodingType, fileBOM);
     wxString status;
-    status.Printf(wxT("Line: %ld  Column: %ld"), line, col);
+    status.Printf(wxT("%s | Line: %ld  Column: %ld"), encoding.c_str(), line, col);
     SetStatusText(status, 1);
 }
 
@@ -512,6 +532,92 @@ void MainFrame::UpdateTitle() {
     SetTitle(title);
 }
 
+wxMBConv* MainFrame::DetectFileEncoding(const wxString& filename, bool& hasBOM, int& bomSize, wxFontEncoding& encodingType) {
+    bomSize = 0;
+    hasBOM = false;
+    encodingType = wxFONTENCODING_UTF8;
+
+    std::ifstream file(filename.ToStdString(), std::ios::binary);
+    if (!file.is_open()) {
+        return &wxConvUTF8;
+    }
+
+    unsigned char bom[4] = {0};
+    file.read((char*)bom, 4);
+    file.close();
+
+    // Check for UTF-8 BOM (EF BB BF)
+    if (bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF) {
+        hasBOM = true;
+        bomSize = 3;
+        encodingType = wxFONTENCODING_UTF8;
+        return &wxConvUTF8;
+    }
+
+    // Check for UTF-16LE BOM (FF FE) - but not UTF-32LE (FF FE 00 00)
+    if (bom[0] == 0xFF && bom[1] == 0xFE && !(bom[2] == 0x00 && bom[3] == 0x00)) {
+        hasBOM = true;
+        bomSize = 2;
+        encodingType = wxFONTENCODING_UTF16LE;
+        return new wxCSConv(wxFONTENCODING_UTF16LE);
+    }
+
+    // Check for UTF-16BE BOM (FE FF) - but not UTF-32BE (00 00 FE FF)
+    if (bom[0] == 0xFE && bom[1] == 0xFF && !(bom[2] == 0x00 && bom[3] == 0x00)) {
+        hasBOM = true;
+        bomSize = 2;
+        encodingType = wxFONTENCODING_UTF16BE;
+        return new wxCSConv(wxFONTENCODING_UTF16BE);
+    }
+
+    // Check for UTF-32LE BOM (FF FE 00 00)
+    if (bom[0] == 0xFF && bom[1] == 0xFE && bom[2] == 0x00 && bom[3] == 0x00) {
+        hasBOM = true;
+        bomSize = 4;
+        encodingType = wxFONTENCODING_UTF32LE;
+        return new wxCSConv(wxFONTENCODING_UTF32LE);
+    }
+
+    // Check for UTF-32BE BOM (00 00 FE FF)
+    if (bom[0] == 0x00 && bom[1] == 0x00 && bom[2] == 0xFE && bom[3] == 0xFF) {
+        hasBOM = true;
+        bomSize = 4;
+        encodingType = wxFONTENCODING_UTF32BE;
+        return new wxCSConv(wxFONTENCODING_UTF32BE);
+    }
+
+    // No BOM found - default to UTF-8 without BOM
+    return &wxConvUTF8;
+}
+
+wxString MainFrame::GetEncodingName(wxFontEncoding encodingType, bool bom) {
+    wxString name;
+
+    switch (encodingType) {
+        case wxFONTENCODING_UTF16LE:
+            name = wxT("UTF-16LE");
+            break;
+        case wxFONTENCODING_UTF16BE:
+            name = wxT("UTF-16BE");
+            break;
+        case wxFONTENCODING_UTF32LE:
+            name = wxT("UTF-32LE");
+            break;
+        case wxFONTENCODING_UTF32BE:
+            name = wxT("UTF-32BE");
+            break;
+        default:
+            name = wxT("UTF-8");
+            break;
+    }
+
+    if (bom) {
+        name += wxT(" BOM");
+    }
+
+    return name;
+}
+
 void MainFrame::LoadFile(const wxString& filename) {
     std::ifstream file(filename.ToStdString(), std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
@@ -529,6 +635,17 @@ void MainFrame::LoadFile(const wxString& filename) {
         textCtrl->SetUndoCollection(false);
     }
 
+    // Detect file encoding
+    int bomSize = 0;
+    wxMBConv* encoding = DetectFileEncoding(filename, fileBOM, bomSize, fileEncodingType);
+
+    // Clean up old encoding if it exists and was owned
+    if (fileEncoding && fileEncodingOwned) {
+        delete fileEncoding;
+    }
+    fileEncoding = encoding;
+    fileEncodingOwned = (encoding != &wxConvUTF8);
+
     // Optimize file reading with larger buffer
     file.rdbuf()->pubsetbuf(nullptr, 256 * 1024);  // 256KB buffer
 
@@ -540,7 +657,20 @@ void MainFrame::LoadFile(const wxString& filename) {
     // Show busy cursor and disable updates for large files
     wxBusyCursor wait;
     textCtrl->BeginUndoAction();
-    textCtrl->SetText(buffer);
+
+    // Convert buffer to wxString using detected encoding, skipping BOM if present
+    wxString content;
+    if (bomSize > 0 && fileSize > static_cast<std::streamsize>(bomSize)) {
+        // Skip BOM bytes and convert remaining content
+        const char* contentStart = buffer.c_str() + bomSize;
+        size_t contentSize = fileSize - bomSize;
+        content = wxString(contentStart, *fileEncoding, contentSize);
+    } else {
+        // No BOM, convert entire buffer
+        content = wxString(buffer.c_str(), *fileEncoding, fileSize);
+    }
+
+    textCtrl->SetText(content);
     textCtrl->EndUndoAction();
 
     // Re-enable undo after loading
@@ -559,13 +689,50 @@ void MainFrame::LoadFile(const wxString& filename) {
 }
 
 void MainFrame::SaveFile(const wxString& filename) {
-    std::ofstream file(filename.ToStdString());
+    std::ofstream file(filename.ToStdString(), std::ios::binary);
     if (!file.is_open()) {
         wxMessageBox(wxT("Could not save file"), wxT("Error"), wxOK | wxICON_ERROR);
         return;
     }
 
-    file << textCtrl->GetValue().ToStdString();
+    wxString content = textCtrl->GetValue();
+    wxMBConv* encoding = fileEncoding ? fileEncoding : &wxConvUTF8;
+    wxFontEncoding encodingType = fileEncoding ? fileEncodingType : wxFONTENCODING_UTF8;
+
+    // Write BOM if the original file had one
+    if (fileBOM) {
+        switch (encodingType) {
+            case wxFONTENCODING_UTF8:
+                // UTF-8 BOM: EF BB BF
+                file.write("\xef\xbb\xbf", 3);
+                break;
+            case wxFONTENCODING_UTF16LE:
+                // UTF-16LE BOM: FF FE
+                file.write("\xff\xfe", 2);
+                break;
+            case wxFONTENCODING_UTF16BE:
+                // UTF-16BE BOM: FE FF
+                file.write("\xfe\xff", 2);
+                break;
+            case wxFONTENCODING_UTF32LE:
+                // UTF-32LE BOM: FF FE 00 00
+                file.write("\xff\xfe\x00\x00", 4);
+                break;
+            case wxFONTENCODING_UTF32BE:
+                // UTF-32BE BOM: 00 00 FE FF
+                file.write("\x00\x00\xfe\xff", 4);
+                break;
+            default:
+                break;
+        }
+    }
+
+    // Convert content using the file's encoding and write to file
+    wxCharBuffer encoded = encoding->cWC2MB(content.wc_str());
+    if (encoded) {
+        file.write(encoded, strlen(encoded));
+    }
+
     file.close();
 
     currentFile = filename;

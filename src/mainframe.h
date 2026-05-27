@@ -24,6 +24,10 @@ private:
     bool wordWrapEnabled;
     bool lineNumbersEnabled;
     wxFont currentFont;
+    wxMBConv* fileEncoding;
+    bool fileBOM;
+    bool fileEncodingOwned;
+    wxFontEncoding fileEncodingType;
 
     void InitUI();
     void CreateMenuBar();
@@ -33,6 +37,8 @@ private:
     void UpdateTitle();
     void LoadFile(const wxString& filename);
     void SaveFile(const wxString& filename);
+    wxMBConv* DetectFileEncoding(const wxString& filename, bool& hasBOM, int& bomSize, wxFontEncoding& encodingType);
+    wxString GetEncodingName(wxFontEncoding encodingType, bool bom);
 
     void OnNew(wxCommandEvent& event);
     void OnNewWindow(wxCommandEvent& event);
