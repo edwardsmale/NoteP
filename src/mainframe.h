@@ -3,14 +3,27 @@
 #include <wx/wx.h>
 #include <wx/stc/stc.h>
 #include <wx/print.h>
+#include <wx/dnd.h>
 
 class FindReplaceDialog;
 class Config;
+
+class FileDropTarget : public wxFileDropTarget {
+public:
+    FileDropTarget(class MainFrame* owner) : owner(owner) {}
+    bool OnDropFiles(wxCoord x, wxCoord y, const wxArrayString& filenames) override;
+
+private:
+    class MainFrame* owner;
+};
 
 class MainFrame : public wxFrame {
 public:
     MainFrame(const wxString& title, const wxString& fileToOpen = wxT(""));
     ~MainFrame();
+
+    void LoadFile(const wxString& filename);
+    bool PromptSaveIfModified();
 
 private:
     wxStyledTextCtrl* textCtrl;
@@ -35,7 +48,6 @@ private:
     void ConfigureTextCtrl();
     void UpdateStatusBar();
     void UpdateTitle();
-    void LoadFile(const wxString& filename);
     void SaveFile(const wxString& filename);
     wxMBConv* DetectFileEncoding(const wxString& filename, bool& hasBOM, int& bomSize, wxFontEncoding& encodingType);
     wxString GetEncodingName(wxFontEncoding encodingType, bool bom);
@@ -71,8 +83,6 @@ private:
     void OnFrameKeyDown(wxKeyEvent& event);
     void OnMoving(wxMoveEvent& event);
     void OnClose(wxCloseEvent& event);
-
-    bool PromptSaveIfModified();
 
     wxDECLARE_EVENT_TABLE();
 };

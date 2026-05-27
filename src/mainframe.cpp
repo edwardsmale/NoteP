@@ -111,6 +111,21 @@ enum {
     ID_ABOUT,
 };
 
+bool FileDropTarget::OnDropFiles(wxCoord, wxCoord, const wxArrayString& filenames) {
+    if (filenames.IsEmpty()) {
+        return false;
+    }
+
+    // Handle the first file dropped
+    // Open it just like the Open menu does
+    if (!owner->PromptSaveIfModified()) {
+        return false;
+    }
+
+    owner->LoadFile(filenames[0]);
+    return true;
+}
+
 wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_NEW, MainFrame::OnNew)
     EVT_MENU(ID_NEWWINDOW, MainFrame::OnNewWindow)
@@ -244,6 +259,9 @@ MainFrame::~MainFrame() {
 void MainFrame::InitUI() {
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     textCtrl = new wxStyledTextCtrl(this);
+
+    // Set up drag and drop support on text control
+    textCtrl->SetDropTarget(new FileDropTarget(this));
 
     // Bind right-click context menu
     textCtrl->Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent&) {
@@ -398,6 +416,9 @@ void MainFrame::InitUI() {
 
     sizer->Add(textCtrl, 1, wxEXPAND);
     SetSizer(sizer);
+
+    // Also set drop target on the frame itself for better coverage
+    SetDropTarget(new FileDropTarget(this));
 }
 
 void MainFrame::CreateMenuBar() {
