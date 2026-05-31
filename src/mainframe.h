@@ -75,6 +75,7 @@ private:
     void OnLineNumbers(wxCommandEvent& event);
     void OnClearAll(wxCommandEvent& event);
     void OnCopyAll(wxCommandEvent& event);
+    void OnCloseWithout(wxCommandEvent& event);
 
     void OnAbout(wxCommandEvent& event);
 

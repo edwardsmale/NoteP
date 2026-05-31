@@ -108,6 +108,7 @@ enum {
     ID_LINENUMBERS,
     ID_CLEARALL,
     ID_COPYALL,
+    ID_CLOSEWITHOUT,
     ID_ABOUT,
 };
 
@@ -148,6 +149,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_LINENUMBERS, MainFrame::OnLineNumbers)
     EVT_MENU(ID_CLEARALL, MainFrame::OnClearAll)
     EVT_MENU(ID_COPYALL, MainFrame::OnCopyAll)
+    EVT_MENU(ID_CLOSEWITHOUT, MainFrame::OnCloseWithout)
     EVT_MENU(ID_ABOUT, MainFrame::OnAbout)
     EVT_STC_MODIFIED(wxID_ANY, MainFrame::OnTextModified)
     EVT_STC_UPDATEUI(wxID_ANY, MainFrame::OnTextUpdateUI)
@@ -274,6 +276,8 @@ void MainFrame::InitUI() {
         contextMenu.AppendSeparator();
         contextMenu.Append(ID_CLEARALL, wxT("C&lear all"));
         contextMenu.Append(ID_COPYALL, wxT("C&opy all"));
+        contextMenu.AppendSeparator();
+        contextMenu.Append(ID_CLOSEWITHOUT, wxT("Close &without saving"));
         PopupMenu(&contextMenu);
     });
 
@@ -951,6 +955,10 @@ void MainFrame::OnClearAll(wxCommandEvent&) {
 void MainFrame::OnCopyAll(wxCommandEvent&) {
     textCtrl->SelectAll();
     textCtrl->Copy();
+}
+
+void MainFrame::OnCloseWithout(wxCommandEvent&) {
+    wxExit();
 }
 
 void MainFrame::OnAbout(wxCommandEvent&) {
