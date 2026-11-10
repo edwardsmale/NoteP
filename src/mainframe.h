@@ -68,7 +68,10 @@ private:
     void OnPaste(wxCommandEvent& event);
     void OnSelectAll(wxCommandEvent& event);
     void OnFind(wxCommandEvent& event);
+    void OnFindNext(wxCommandEvent& event);
+    void OnFindSelection(wxCommandEvent& event);
     void OnReplace(wxCommandEvent& event);
+    FindReplaceDialog* GetFindReplaceDialog();
 
     void OnFont(wxCommandEvent& event);
     void OnWordWrap(wxCommandEvent& event);

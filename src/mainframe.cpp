@@ -102,6 +102,8 @@ enum {
     ID_PASTE,
     ID_SELECTALL,
     ID_FIND,
+    ID_FINDNEXT,
+    ID_FINDSELECTION,
     ID_REPLACE,
     ID_FONT,
     ID_WORDWRAP,
@@ -143,6 +145,8 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_MENU(ID_PASTE, MainFrame::OnPaste)
     EVT_MENU(ID_SELECTALL, MainFrame::OnSelectAll)
     EVT_MENU(ID_FIND, MainFrame::OnFind)
+    EVT_MENU(ID_FINDNEXT, MainFrame::OnFindNext)
+    EVT_MENU(ID_FINDSELECTION, MainFrame::OnFindSelection)
     EVT_MENU(ID_REPLACE, MainFrame::OnReplace)
     EVT_MENU(ID_FONT, MainFrame::OnFont)
     EVT_MENU(ID_WORDWRAP, MainFrame::OnWordWrap)
@@ -456,6 +460,8 @@ void MainFrame::CreateMenuBar() {
     editMenu->Append(ID_SELECTALL, wxT("Select &All\tCtrl+A"), wxT("Select all text"));
     editMenu->AppendSeparator();
     editMenu->Append(ID_FIND, wxT("&Find\tCtrl+F"), wxT("Find text"));
+    editMenu->Append(ID_FINDNEXT, wxT("Find &Next\tF3"), wxT("Find the next match of the last search"));
+    editMenu->Append(ID_FINDSELECTION, wxT("Find &Selection\tCtrl+F3"), wxT("Find the next match of the selected text"));
     editMenu->Append(ID_REPLACE, wxT("&Replace\tCtrl+H"), wxT("Find and replace text"));
     menuBar->Append(editMenu, wxT("&Edit"));
 
@@ -913,19 +919,32 @@ void MainFrame::OnSelectAll(wxCommandEvent&) {
     textCtrl->SelectAll();
 }
 
-void MainFrame::OnFind(wxCommandEvent&) {
+FindReplaceDialog* MainFrame::GetFindReplaceDialog() {
+    // Created once and kept (hidden) so the last search is remembered.
     if (!findReplaceDialog) {
         findReplaceDialog = new FindReplaceDialog(this, textCtrl);
     }
-    findReplaceDialog->ShowFindTab();
+    return findReplaceDialog;
+}
+
+void MainFrame::OnFind(wxCommandEvent&) {
+    GetFindReplaceDialog()->ShowFindTab();
     findReplaceDialog->ShowModal();
 }
 
-void MainFrame::OnReplace(wxCommandEvent&) {
-    if (!findReplaceDialog) {
-        findReplaceDialog = new FindReplaceDialog(this, textCtrl);
+void MainFrame::OnFindNext(wxCommandEvent& event) {
+    // Nothing searched for yet: open the Find dialog instead.
+    if (!GetFindReplaceDialog()->FindNext()) {
+        OnFind(event);
     }
-    findReplaceDialog->ShowReplaceTab();
+}
+
+void MainFrame::OnFindSelection(wxCommandEvent&) {
+    GetFindReplaceDialog()->FindSelection();
+}
+
+void MainFrame::OnReplace(wxCommandEvent&) {
+    GetFindReplaceDialog()->ShowReplaceTab();
     findReplaceDialog->ShowModal();
 }
 

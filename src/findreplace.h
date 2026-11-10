@@ -11,7 +11,23 @@ public:
     void ShowFindTab();
     void ShowReplaceTab();
 
+    // Repeats the last search (F3). Returns false if nothing has been searched for yet.
+    bool FindNext();
+
+    // Remembers the selected text (or the word at the caret) as the search text
+    // and finds its next occurrence (Ctrl+F3).
+    void FindSelection();
+
 private:
+    // The criteria of the last search, used by FindNext.
+    wxString searchText;
+    bool searchMatchCase;
+    bool searchForward;
+
+    void RememberSearch(const wxString& text, bool matchCase, bool forward);
+    void OnFindNextKey(wxCommandEvent& event);
+    void OnFindSelectionKey(wxCommandEvent& event);
+
     wxStyledTextCtrl* textCtrl;
     wxNotebook* notebook;
     wxTextCtrl* findText;

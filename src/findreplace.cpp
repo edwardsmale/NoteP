@@ -2,7 +2,15 @@
 #include <wx/stc/stc.h>
 #include <wx/display.h>
 
+// Accelerator IDs so F3 / Ctrl+F3 also work while the (modal) dialog has focus.
+enum {
+    ID_DLG_FIND_NEXT = wxID_HIGHEST + 1,
+    ID_DLG_FIND_SELECTION
+};
+
 wxBEGIN_EVENT_TABLE(FindReplaceDialog, wxDialog)
+    EVT_MENU(ID_DLG_FIND_NEXT, FindReplaceDialog::OnFindNextKey)
+    EVT_MENU(ID_DLG_FIND_SELECTION, FindReplaceDialog::OnFindSelectionKey)
     EVT_BUTTON(wxID_FIND, FindReplaceDialog::OnFind)
     EVT_BUTTON(wxID_REPLACE, FindReplaceDialog::OnReplace)
     EVT_BUTTON(wxID_REPLACE_ALL, FindReplaceDialog::OnReplaceAll)
@@ -14,7 +22,7 @@ wxEND_EVENT_TABLE()
 FindReplaceDialog::FindReplaceDialog(wxWindow* parent, wxStyledTextCtrl* tc)
     : wxDialog(parent, wxID_ANY, wxT("Find & Replace"), wxDefaultPosition, wxSize(400, 250),
                wxDEFAULT_DIALOG_STYLE & ~wxRESIZE_BORDER),
-      textCtrl(tc), lastFoundPos(0) {
+      searchMatchCase(false), searchForward(true), textCtrl(tc), lastFoundPos(0) {
 
     wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 
@@ -103,6 +111,11 @@ FindReplaceDialog::FindReplaceDialog(wxWindow* parent, wxStyledTextCtrl* tc)
     // Pressing Esc closes the dialog (maps to the Close button).
     SetEscapeId(wxID_CLOSE);
 
+    wxAcceleratorEntry accelEntries[2];
+    accelEntries[0].Set(wxACCEL_NORMAL, WXK_F3, ID_DLG_FIND_NEXT);
+    accelEntries[1].Set(wxACCEL_CTRL, WXK_F3, ID_DLG_FIND_SELECTION);
+    SetAcceleratorTable(wxAcceleratorTable(2, accelEntries));
+
     // Position the dialog 120px to the right of its default (centred) spot.
     CentreOnParent();
     SetPosition(GetPosition() + wxPoint(120, 0));
@@ -153,7 +166,74 @@ void FindReplaceDialog::OnFind(wxCommandEvent&) {
 
     bool forward = forwardRadio->GetValue();
     bool matchCase = matchCaseCheckbox->GetValue();
-    FindText(findText->GetValue(), matchCase, forward);
+    RememberSearch(findText->GetValue(), matchCase, forward);
+    FindText(searchText, searchMatchCase, searchForward);
+}
+
+void FindReplaceDialog::RememberSearch(const wxString& text, bool matchCase, bool forward) {
+    searchText = text;
+    searchMatchCase = matchCase;
+    searchForward = forward;
+}
+
+bool FindReplaceDialog::FindNext() {
+    if (searchText.IsEmpty()) {
+        return false;
+    }
+    FindText(searchText, searchMatchCase, searchForward);
+    return true;
+}
+
+void FindReplaceDialog::FindSelection() {
+    if (!textCtrl) {
+        return;
+    }
+
+    wxString text = textCtrl->GetSelectedText();
+    if (text.IsEmpty()) {
+        // No selection: use the word at the caret.
+        int pos = textCtrl->GetCurrentPos();
+        int start = textCtrl->WordStartPosition(pos, true);
+        int end = textCtrl->WordEndPosition(pos, true);
+        if (end > start) {
+            text = textCtrl->GetTextRange(start, end);
+            // Select the word so the search starts after it.
+            textCtrl->SetSelection(start, end);
+        }
+    }
+    if (text.IsEmpty()) {
+        wxBell();
+        return;
+    }
+
+    // Keep the dialog's Find boxes in step with the remembered text.
+    findText->ChangeValue(text);
+    replaceText->ChangeValue(text);
+
+    searchText = text;
+    FindText(searchText, searchMatchCase, true);
+}
+
+void FindReplaceDialog::OnFindNextKey(wxCommandEvent&) {
+    if (FindNext()) {
+        return;
+    }
+
+    // Nothing searched for yet: search for what's typed in the active tab (never replaces).
+    bool onReplaceTab = (notebook->GetSelection() == 1);
+    wxString text = onReplaceTab ? replaceText->GetValue() : findText->GetValue();
+    if (text.IsEmpty()) {
+        wxBell();
+        return;
+    }
+    bool matchCase = onReplaceTab ? replaceMatchCaseCheckbox->GetValue() : matchCaseCheckbox->GetValue();
+    bool forward = onReplaceTab ? true : forwardRadio->GetValue();
+    RememberSearch(text, matchCase, forward);
+    FindNext();
+}
+
+void FindReplaceDialog::OnFindSelectionKey(wxCommandEvent&) {
+    FindSelection();
 }
 
 void FindReplaceDialog::OnReplace(wxCommandEvent&) {
@@ -173,6 +253,7 @@ void FindReplaceDialog::OnReplace(wxCommandEvent&) {
         textCtrl->ReplaceSelection(replaceWith);
     }
 
+    RememberSearch(findStr, matchCase, true);
     FindText(findStr, matchCase, true);
 }
 
@@ -256,6 +337,9 @@ int FindReplaceDialog::FindText(const wxString& text, bool matchCase, bool forwa
         textCtrl->SetSelection(result, resultEnd);
         textCtrl->ScrollRange(resultEnd, result);
         MoveAwayFromMatch(result);
+    } else {
+        // No match anywhere in the document.
+        wxBell();
     }
 
     return result;
