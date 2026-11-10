@@ -330,7 +330,9 @@ void MainFrame::InitUI() {
             } else {
                 newContent = wxString(newContentBuffer.c_str(), *newEncoding, fileSize);
             }
-            delete newEncoding;
+            if (newEncoding != &wxConvUTF8) {
+                delete newEncoding;
+            }
 
             wxString currentContent = textCtrl->GetValue();
 
