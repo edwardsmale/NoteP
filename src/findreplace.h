@@ -8,21 +8,32 @@ class FindReplaceDialog : public wxDialog {
 public:
     FindReplaceDialog(wxWindow* parent, wxStyledTextCtrl* textCtrl);
 
+    void ShowFindTab();
+    void ShowReplaceTab();
+
 private:
     wxStyledTextCtrl* textCtrl;
     wxNotebook* notebook;
     wxTextCtrl* findText;
     wxTextCtrl* replaceText;
+    wxTextCtrl* replaceWithText;
     wxCheckBox* matchCaseCheckbox;
+    wxCheckBox* replaceMatchCaseCheckbox;
     wxRadioButton* forwardRadio;
     wxRadioButton* backwardRadio;
+    wxButton* findButton;
+    wxButton* replaceButton;
     int lastFoundPos;
 
     void OnFind(wxCommandEvent& event);
-    void OnFindAll(wxCommandEvent& event);
     void OnReplace(wxCommandEvent& event);
     void OnReplaceAll(wxCommandEvent& event);
     void OnClose(wxCommandEvent& event);
+    void OnShow(wxShowEvent& event);
+    void OnPageChanged(wxBookCtrlEvent& event);
+
+    // Makes Enter trigger the right action for the given tab (0 = Find, 1 = Replace).
+    void UpdateDefaultButton(int page);
 
     int FindText(const wxString& text, bool matchCase, bool forward);
 

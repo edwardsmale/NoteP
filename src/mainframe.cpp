@@ -913,6 +913,7 @@ void MainFrame::OnFind(wxCommandEvent&) {
     if (!findReplaceDialog) {
         findReplaceDialog = new FindReplaceDialog(this, textCtrl);
     }
+    findReplaceDialog->ShowFindTab();
     findReplaceDialog->ShowModal();
 }
 
@@ -920,6 +921,7 @@ void MainFrame::OnReplace(wxCommandEvent&) {
     if (!findReplaceDialog) {
         findReplaceDialog = new FindReplaceDialog(this, textCtrl);
     }
+    findReplaceDialog->ShowReplaceTab();
     findReplaceDialog->ShowModal();
 }
 

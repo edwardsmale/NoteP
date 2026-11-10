@@ -4,12 +4,15 @@
 wxBEGIN_EVENT_TABLE(FindReplaceDialog, wxDialog)
     EVT_BUTTON(wxID_FIND, FindReplaceDialog::OnFind)
     EVT_BUTTON(wxID_REPLACE, FindReplaceDialog::OnReplace)
+    EVT_BUTTON(wxID_REPLACE_ALL, FindReplaceDialog::OnReplaceAll)
     EVT_BUTTON(wxID_CLOSE, FindReplaceDialog::OnClose)
+    EVT_SHOW(FindReplaceDialog::OnShow)
+    EVT_NOTEBOOK_PAGE_CHANGED(wxID_ANY, FindReplaceDialog::OnPageChanged)
 wxEND_EVENT_TABLE()
 
 FindReplaceDialog::FindReplaceDialog(wxWindow* parent, wxStyledTextCtrl* tc)
     : wxDialog(parent, wxID_ANY, wxT("Find & Replace"), wxDefaultPosition, wxSize(400, 250),
-               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+               wxDEFAULT_DIALOG_STYLE & ~wxRESIZE_BORDER),
       textCtrl(tc), lastFoundPos(0) {
 
     wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
@@ -27,7 +30,7 @@ FindReplaceDialog::FindReplaceDialog(wxWindow* parent, wxStyledTextCtrl* tc)
     findTextSizer->Add(findText, 1, wxEXPAND);
     findSizer->Add(findTextSizer, 0, wxEXPAND | wxBOTTOM, 10);
 
-    matchCaseCheckbox = new wxCheckBox(findPanel, wxID_ANY, wxT("Match Case"));
+    matchCaseCheckbox = new wxCheckBox(findPanel, wxID_ANY, wxT("Match &case"));
     findSizer->Add(matchCaseCheckbox, 0, wxBOTTOM, 10);
 
     wxBoxSizer* directionSizer = new wxBoxSizer(wxHORIZONTAL);
@@ -42,10 +45,8 @@ FindReplaceDialog::FindReplaceDialog(wxWindow* parent, wxStyledTextCtrl* tc)
     findSizer->Add(directionSizer, 0, wxBOTTOM, 10);
 
     wxBoxSizer* buttonSizer = new wxBoxSizer(wxHORIZONTAL);
-    wxButton* findBtn = new wxButton(findPanel, wxID_FIND, wxT("Find Next"));
-    wxButton* findAllBtn = new wxButton(findPanel, wxID_ANY, wxT("Find All"));
-    buttonSizer->Add(findBtn, 0, wxRIGHT, 5);
-    buttonSizer->Add(findAllBtn, 0, wxRIGHT, 5);
+    findButton = new wxButton(findPanel, wxID_FIND, wxT("&Find Next"));
+    buttonSizer->Add(findButton, 0, wxRIGHT, 5);
     findSizer->Add(buttonSizer, 0, wxBOTTOM, 10);
 
     findPanel->SetSizer(findSizer);
@@ -65,14 +66,17 @@ FindReplaceDialog::FindReplaceDialog(wxWindow* parent, wxStyledTextCtrl* tc)
     wxBoxSizer* replaceWithSizer = new wxBoxSizer(wxHORIZONTAL);
     replaceWithSizer->Add(new wxStaticText(replacePanel, wxID_ANY, wxT("Replace with:")), 0,
                           wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
-    wxTextCtrl* replaceWithText = new wxTextCtrl(replacePanel, wxID_ANY);
+    replaceWithText = new wxTextCtrl(replacePanel, wxID_ANY);
     replaceWithSizer->Add(replaceWithText, 1, wxEXPAND);
     replaceSizer->Add(replaceWithSizer, 0, wxEXPAND | wxBOTTOM, 10);
 
+    replaceMatchCaseCheckbox = new wxCheckBox(replacePanel, wxID_ANY, wxT("Match &case"));
+    replaceSizer->Add(replaceMatchCaseCheckbox, 0, wxBOTTOM, 10);
+
     wxBoxSizer* replaceButtonSizer = new wxBoxSizer(wxHORIZONTAL);
-    wxButton* replaceBtn = new wxButton(replacePanel, wxID_REPLACE, wxT("Replace"));
-    wxButton* replaceAllBtn = new wxButton(replacePanel, wxID_ANY, wxT("Replace All"));
-    replaceButtonSizer->Add(replaceBtn, 0, wxRIGHT, 5);
+    replaceButton = new wxButton(replacePanel, wxID_REPLACE, wxT("&Replace"));
+    wxButton* replaceAllBtn = new wxButton(replacePanel, wxID_REPLACE_ALL, wxT("Replace &All"));
+    replaceButtonSizer->Add(replaceButton, 0, wxRIGHT, 5);
     replaceButtonSizer->Add(replaceAllBtn, 0, wxRIGHT, 5);
     replaceSizer->Add(replaceButtonSizer, 0, wxBOTTOM, 10);
 
@@ -87,9 +91,61 @@ FindReplaceDialog::FindReplaceDialog(wxWindow* parent, wxStyledTextCtrl* tc)
     mainSizer->Add(closeSizer, 0, wxALIGN_RIGHT | wxALL, 10);
 
     SetSizer(mainSizer);
+
+    // Size the dialog to fit its tallest tab so no controls get squashed,
+    // keeping the intended width, then lock that as the fixed size
+    // (the dialog is not resizable).
+    mainSizer->Fit(this);
+    SetClientSize(400, GetClientSize().GetHeight());
+    SetMinSize(GetSize());
+
+    // Pressing Esc closes the dialog (maps to the Close button).
+    SetEscapeId(wxID_CLOSE);
+
+    // Position the dialog 120px to the right of its default (centred) spot.
+    CentreOnParent();
+    SetPosition(GetPosition() + wxPoint(120, 0));
+
+    UpdateDefaultButton(notebook->GetSelection());
 }
 
-void FindReplaceDialog::OnFind(wxCommandEvent& event) {
+void FindReplaceDialog::UpdateDefaultButton(int page) {
+    // Enter does Find Next on the Find tab, Replace on the Replace tab.
+    if (page == 1) {
+        replaceButton->SetDefault();
+    } else {
+        findButton->SetDefault();
+    }
+}
+
+void FindReplaceDialog::OnPageChanged(wxBookCtrlEvent& event) {
+    UpdateDefaultButton(event.GetSelection());
+    event.Skip();
+}
+
+void FindReplaceDialog::ShowFindTab() {
+    notebook->SetSelection(0);
+    UpdateDefaultButton(0);
+}
+
+void FindReplaceDialog::ShowReplaceTab() {
+    notebook->SetSelection(1);
+    UpdateDefaultButton(1);
+}
+
+void FindReplaceDialog::OnShow(wxShowEvent& event) {
+    if (event.IsShown()) {
+        // Focus the Find box on whichever tab is currently active.
+        wxTextCtrl* target = (notebook->GetSelection() == 1) ? replaceText : findText;
+        if (target) {
+            target->SetFocus();
+            target->SelectAll();
+        }
+    }
+    event.Skip();
+}
+
+void FindReplaceDialog::OnFind(wxCommandEvent&) {
     if (!findText || findText->GetValue().IsEmpty()) {
         return;
     }
@@ -99,19 +155,62 @@ void FindReplaceDialog::OnFind(wxCommandEvent& event) {
     FindText(findText->GetValue(), matchCase, forward);
 }
 
-void FindReplaceDialog::OnFindAll(wxCommandEvent& event) {
-    // Placeholder for find all functionality
+void FindReplaceDialog::OnReplace(wxCommandEvent&) {
+    if (!textCtrl || !replaceText || replaceText->GetValue().IsEmpty()) {
+        return;
+    }
+
+    wxString findStr = replaceText->GetValue();
+    wxString replaceWith = replaceWithText->GetValue();
+    bool matchCase = replaceMatchCaseCheckbox->GetValue();
+
+    // If the current selection is a match, replace it before finding the next one.
+    wxString selected = textCtrl->GetSelectedText();
+    bool selectionMatches = matchCase ? selected.IsSameAs(findStr)
+                                      : selected.IsSameAs(findStr, false);
+    if (selectionMatches) {
+        textCtrl->ReplaceSelection(replaceWith);
+    }
+
+    FindText(findStr, matchCase, true);
 }
 
-void FindReplaceDialog::OnReplace(wxCommandEvent& event) {
-    // Placeholder for replace functionality
+void FindReplaceDialog::OnReplaceAll(wxCommandEvent&) {
+    if (!textCtrl || !replaceText || replaceText->GetValue().IsEmpty()) {
+        return;
+    }
+
+    wxString findStr = replaceText->GetValue();
+    wxString replaceWith = replaceWithText->GetValue();
+    bool matchCase = replaceMatchCaseCheckbox->GetValue();
+
+    int flags = 0;
+    if (matchCase) {
+        flags |= wxSTC_FIND_MATCHCASE;
+    }
+
+    int count = 0;
+    int pos = 0;
+
+    textCtrl->BeginUndoAction();
+    while (true) {
+        int found = textCtrl->FindText(pos, textCtrl->GetLength(), findStr, flags);
+        if (found == -1) {
+            break;
+        }
+        textCtrl->SetTargetStart(found);
+        textCtrl->SetTargetEnd(found + findStr.Len());
+        textCtrl->ReplaceTarget(replaceWith);
+        pos = found + replaceWith.Len();
+        count++;
+    }
+    textCtrl->EndUndoAction();
+
+    wxMessageBox(wxString::Format(wxT("%d replacement(s) made."), count),
+                 wxT("Replace All"), wxOK | wxICON_INFORMATION, this);
 }
 
-void FindReplaceDialog::OnReplaceAll(wxCommandEvent& event) {
-    // Placeholder for replace all functionality
-}
-
-void FindReplaceDialog::OnClose(wxCommandEvent& event) {
+void FindReplaceDialog::OnClose(wxCommandEvent&) {
     EndModal(wxID_CLOSE);
 }
 
@@ -126,12 +225,21 @@ int FindReplaceDialog::FindText(const wxString& text, bool matchCase, bool forwa
     }
 
     int currentPos = textCtrl->GetCurrentPos();
+    int lastPos = textCtrl->GetLastPosition();
     int result = -1;
 
     if (forward) {
-        result = textCtrl->FindText(currentPos, textCtrl->GetLastPosition(), text, flags);
+        result = textCtrl->FindText(currentPos, lastPos, text, flags);
+        // Wrap around to the top once the end of the document is reached.
+        if (result == -1) {
+            result = textCtrl->FindText(0, lastPos, text, flags);
+        }
     } else {
         result = textCtrl->FindText(currentPos, 0, text, flags);
+        // Wrap around to the bottom once the start of the document is reached.
+        if (result == -1) {
+            result = textCtrl->FindText(lastPos, 0, text, flags);
+        }
     }
 
     if (result != -1) {
