@@ -1,5 +1,6 @@
 #include "findreplace.h"
 #include <wx/stc/stc.h>
+#include <wx/display.h>
 
 wxBEGIN_EVENT_TABLE(FindReplaceDialog, wxDialog)
     EVT_BUTTON(wxID_FIND, FindReplaceDialog::OnFind)
@@ -227,28 +228,66 @@ int FindReplaceDialog::FindText(const wxString& text, bool matchCase, bool forwa
         flags |= wxSTC_FIND_MATCHCASE;
     }
 
-    int currentPos = textCtrl->GetCurrentPos();
     int lastPos = textCtrl->GetLastPosition();
     int result = -1;
+    int resultEnd = -1;
 
     if (forward) {
-        result = textCtrl->FindText(currentPos, lastPos, text, flags);
+        // Search from the end of the current selection so the current match is skipped.
+        int startPos = textCtrl->GetSelectionEnd();
+        result = textCtrl->FindText(startPos, lastPos, text, flags, &resultEnd);
         // Wrap around to the top once the end of the document is reached.
         if (result == -1) {
-            result = textCtrl->FindText(0, lastPos, text, flags);
+            result = textCtrl->FindText(0, lastPos, text, flags, &resultEnd);
         }
     } else {
-        result = textCtrl->FindText(currentPos, 0, text, flags);
+        // Search from the start of the current selection so the current match is skipped.
+        int startPos = textCtrl->GetSelectionStart();
+        result = textCtrl->FindText(startPos, 0, text, flags, &resultEnd);
         // Wrap around to the bottom once the start of the document is reached.
         if (result == -1) {
-            result = textCtrl->FindText(lastPos, 0, text, flags);
+            result = textCtrl->FindText(lastPos, 0, text, flags, &resultEnd);
         }
     }
 
     if (result != -1) {
-        textCtrl->SetSelection(result, result + text.Len());
+        // Unfold the line if needed, select the match and scroll it into view.
         textCtrl->EnsureVisible(textCtrl->LineFromPosition(result));
+        textCtrl->SetSelection(result, resultEnd);
+        textCtrl->ScrollRange(resultEnd, result);
+        MoveAwayFromMatch(result);
     }
 
     return result;
+}
+
+void FindReplaceDialog::MoveAwayFromMatch(int matchPos) {
+    if (!IsShown()) {
+        return;
+    }
+
+    // Screen rectangle of the line containing the match.
+    int line = textCtrl->LineFromPosition(matchPos);
+    int lineHeight = textCtrl->TextHeight(line);
+    wxPoint linePos = textCtrl->ClientToScreen(textCtrl->PointFromPosition(matchPos));
+    wxRect textRect = textCtrl->GetScreenRect();
+    wxRect matchRect(textRect.GetLeft(), linePos.y, textRect.GetWidth(), lineHeight);
+
+    wxRect dlgRect = GetScreenRect();
+    if (!dlgRect.Intersects(matchRect)) {
+        return;
+    }
+
+    // Put the dialog below the matched line if it fits on screen, otherwise above it.
+    int displayIndex = wxDisplay::GetFromWindow(this);
+    wxRect screen = wxDisplay(displayIndex == wxNOT_FOUND ? 0 : displayIndex).GetClientArea();
+    const int gap = 10;
+
+    int newY = matchRect.GetBottom() + gap;
+    if (newY + dlgRect.GetHeight() > screen.GetBottom()) {
+        newY = matchRect.GetTop() - gap - dlgRect.GetHeight();
+    }
+    newY = wxMax(newY, screen.GetTop());
+
+    Move(dlgRect.GetLeft(), newY);
 }

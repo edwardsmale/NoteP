@@ -37,5 +37,8 @@ private:
 
     int FindText(const wxString& text, bool matchCase, bool forward);
 
+    // Moves the dialog out of the way if it covers the line containing matchPos.
+    void MoveAwayFromMatch(int matchPos);
+
     wxDECLARE_EVENT_TABLE();
 };
