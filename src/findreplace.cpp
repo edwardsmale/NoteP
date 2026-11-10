@@ -194,14 +194,17 @@ void FindReplaceDialog::OnReplaceAll(wxCommandEvent&) {
 
     textCtrl->BeginUndoAction();
     while (true) {
-        int found = textCtrl->FindText(pos, textCtrl->GetLength(), findStr, flags);
+        // Positions are byte offsets, so use the match end Scintilla reports
+        // rather than the character length of the search string.
+        int foundEnd = -1;
+        int found = textCtrl->FindText(pos, textCtrl->GetLength(), findStr, flags, &foundEnd);
         if (found == -1) {
             break;
         }
         textCtrl->SetTargetStart(found);
-        textCtrl->SetTargetEnd(found + findStr.Len());
+        textCtrl->SetTargetEnd(foundEnd);
         textCtrl->ReplaceTarget(replaceWith);
-        pos = found + replaceWith.Len();
+        pos = textCtrl->GetTargetEnd();
         count++;
     }
     textCtrl->EndUndoAction();
