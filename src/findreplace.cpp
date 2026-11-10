@@ -152,6 +152,12 @@ void FindReplaceDialog::OnShow(wxShowEvent& event) {
         // Focus the Find box on whichever tab is currently active.
         wxTextCtrl* target = (notebook->GetSelection() == 1) ? replaceText : findText;
         if (target) {
+            // Pre-fill with the editor's selection. Multi-line selections are skipped
+            // because the Find box is a single line.
+            wxString selected = textCtrl ? textCtrl->GetSelectedText() : wxString();
+            if (!selected.IsEmpty() && selected.find_first_of(wxT("\r\n")) == wxString::npos) {
+                target->ChangeValue(selected);
+            }
             target->SetFocus();
             target->SelectAll();
         }
