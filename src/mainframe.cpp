@@ -753,9 +753,11 @@ void MainFrame::SaveFile(const wxString& filename) {
     }
 
     // Convert content using the file's encoding and write to file
-    wxCharBuffer encoded = encoding->cWC2MB(content.wc_str());
-    if (encoded) {
-        file.write(encoded, strlen(encoded));
+    // Use the converter's reported length, not strlen: UTF-16/32 output contains NUL bytes
+    size_t encodedLen = 0;
+    wxCharBuffer encoded = encoding->cWC2MB(content.wc_str(), content.length(), &encodedLen);
+    if (encoded && encodedLen != wxCONV_FAILED && encodedLen > 0) {
+        file.write(encoded.data(), encodedLen);
     }
 
     file.close();
